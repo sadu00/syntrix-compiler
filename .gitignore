@@ -1,0 +1,10 @@
+# Executable files
+*.exe
+
+# Generated Flex and Bison files
+lex.yy.c
+parser.tab.c
+parser.tab.h
+
+# Temporary test file
+test.syn
