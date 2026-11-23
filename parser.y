@@ -1,8 +1,12 @@
 
+%code requires {
+    #include "symbol_table.h"
+}
+
 %{
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include "symbol_table.h"
 
 int yylex(void);
 void yyerror(const char *s);
@@ -11,6 +15,7 @@ void yyerror(const char *s);
 %union {
     double num;
     char *str;
+    DataType type;
 }
 
 %token INT FLOAT CHAR STRING
@@ -26,6 +31,7 @@ void yyerror(const char *s);
 %token INVALID
 
 %type <num> expression
+%type <type> data_type
 
 %left EQ NE GT LT GE LE
 %left PLUS MINUS
@@ -55,19 +61,36 @@ statement:
     ;
 
 declaration:
-      data_type ID SEMICOLON
+    data_type ID SEMICOLON
+    {
+        if (!semantic_error) {
+            add_symbol($2, $1, 0, 0);
+        }
+        free($2);
+    }
     | data_type ID ASSIGN expression SEMICOLON
+    {
+        if (!semantic_error) {
+            add_symbol($2, $1, $4, 1);
+        }
+        free($2);
+    }
     ;
+    
 
 data_type:
-      INT
-    | FLOAT
-    | CHAR
-    | STRING
+      INT       { $$ = TYPE_INT; }
+    | FLOAT     { $$ = TYPE_FLOAT; }
+    | CHAR      { $$ = TYPE_CHAR; }
+    | STRING    { $$ = TYPE_STRING; }
     ;
 
 assignment:
     ID ASSIGN expression SEMICOLON
+    {
+        update_symbol($1, $3);
+        free($1);
+    }
     ;
 
 print_statement:
@@ -93,20 +116,52 @@ block:
     ;
 
 expression:
-      expression PLUS expression       { $$ = $1 + $3; }
-    | expression MINUS expression      { $$ = $1 - $3; }
-    | expression MULTIPLY expression   { $$ = $1 * $3; }
-    | expression DIVIDE expression     { $$ = $1 / $3; }
-    | expression EQ expression         { $$ = ($1 == $3); }
-    | expression NE expression         { $$ = ($1 != $3); }
-    | expression GT expression         { $$ = ($1 > $3); }
-    | expression LT expression         { $$ = ($1 < $3); }
-    | expression GE expression         { $$ = ($1 >= $3); }
-    | expression LE expression         { $$ = ($1 <= $3); }
-    | LPAREN expression RPAREN         { $$ = $2; }
-    | NUMBER                           { $$ = $1; }
-    | FLOAT_NUM                        { $$ = $1; }
-    | ID                               { $$ = 0; }
+      expression PLUS expression
+        { $$ = $1 + $3; }
+    | expression MINUS expression
+        { $$ = $1 - $3; }
+    | expression MULTIPLY expression
+        { $$ = $1 * $3; }
+    | expression DIVIDE expression
+        { $$ = $1 / $3; }
+    | expression EQ expression
+        { $$ = ($1 == $3); }
+    | expression NE expression
+        { $$ = ($1 != $3); }
+    | expression GT expression
+        { $$ = ($1 > $3); }
+    | expression LT expression
+        { $$ = ($1 < $3); }
+    | expression GE expression
+        { $$ = ($1 >= $3); }
+    | expression LE expression
+        { $$ = ($1 <= $3); }
+    | LPAREN expression RPAREN
+        { $$ = $2; }
+    | NUMBER
+        { $$ = $1; }
+    | FLOAT_NUM
+        { $$ = $1; }
+    | ID
+        {
+            Symbol sym;
+
+            if (get_symbol($1, &sym)) {
+                if (sym.initialized) {
+                    $$ = sym.value;
+                } else {
+                    printf("Semantic Error: Variable '%s' is not initialized.\n", $1);
+                    semantic_error = 1;
+                    $$ = 0;
+                }
+            } else {
+                printf("Semantic Error: Variable '%s' is not declared.\n", $1);
+                semantic_error = 1;
+                $$ = 0;
+            }
+
+            free($1);
+        }
     ;
 
 %%
