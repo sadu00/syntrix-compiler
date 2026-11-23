@@ -16,6 +16,7 @@ void yyerror(const char *s);
     double num;
     char *str;
     DataType type;
+    ExprValue expr;
 }
 
 %token INT FLOAT CHAR STRING
@@ -30,7 +31,7 @@ void yyerror(const char *s);
 %token LPAREN RPAREN LBRACE RBRACE
 %token INVALID
 
-%type <num> expression
+%type <expr> expression
 %type <type> data_type
 
 %left EQ NE GT LT GE LE
@@ -71,12 +72,18 @@ declaration:
     | data_type ID ASSIGN expression SEMICOLON
     {
         if (!semantic_error) {
-            add_symbol($2, $1, $4, 1);
+            if (check_type_compatibility($1, $4.type)) {
+                add_symbol($2, $1, $4.value, 1);
+            } else {
+                printf("Semantic Error: Cannot assign %s value to %s variable '%s'.\n",
+                       get_type_name($4.type),
+                       get_type_name($1), $2);
+                semantic_error = 1;
+            }
         }
         free($2);
     }
     ;
-    
 
 data_type:
       INT       { $$ = TYPE_INT; }
@@ -88,7 +95,22 @@ data_type:
 assignment:
     ID ASSIGN expression SEMICOLON
     {
-        update_symbol($1, $3);
+        Symbol sym;
+
+        if (!semantic_error) {
+            if (get_symbol($1, &sym)) {
+                if (check_type_compatibility(sym.type, $3.type)) {
+                    update_symbol($1, $3.value);
+                } else {
+                    printf("Semantic Error: Type mismatch for variable '%s'.\n", $1);
+                    semantic_error = 1;
+                }
+            } else {
+                printf("Semantic Error: Variable '%s' is not declared.\n", $1);
+                semantic_error = 1;
+            }
+        }
+
         free($1);
     }
     ;
@@ -117,47 +139,99 @@ block:
 
 expression:
       expression PLUS expression
-        { $$ = $1 + $3; }
+        {
+            $$.value = $1.value + $3.value;
+            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
+                      ? TYPE_FLOAT : TYPE_INT;
+        }
     | expression MINUS expression
-        { $$ = $1 - $3; }
+        {
+            $$.value = $1.value - $3.value;
+            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
+                      ? TYPE_FLOAT : TYPE_INT;
+        }
     | expression MULTIPLY expression
-        { $$ = $1 * $3; }
+        {
+            $$.value = $1.value * $3.value;
+            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
+                      ? TYPE_FLOAT : TYPE_INT;
+        }
     | expression DIVIDE expression
-        { $$ = $1 / $3; }
+        {
+            if ($3.value == 0) {
+                printf("Semantic Error: Division by zero.\n");
+                semantic_error = 1;
+                $$.value = 0;
+            } else {
+                $$.value = $1.value / $3.value;
+            }
+
+            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
+                      ? TYPE_FLOAT : TYPE_INT;
+        }
     | expression EQ expression
-        { $$ = ($1 == $3); }
+        {
+            $$.value = ($1.value == $3.value);
+            $$.type = TYPE_INT;
+        }
     | expression NE expression
-        { $$ = ($1 != $3); }
+        {
+            $$.value = ($1.value != $3.value);
+            $$.type = TYPE_INT;
+        }
     | expression GT expression
-        { $$ = ($1 > $3); }
+        {
+            $$.value = ($1.value > $3.value);
+            $$.type = TYPE_INT;
+        }
     | expression LT expression
-        { $$ = ($1 < $3); }
+        {
+            $$.value = ($1.value < $3.value);
+            $$.type = TYPE_INT;
+        }
     | expression GE expression
-        { $$ = ($1 >= $3); }
+        {
+            $$.value = ($1.value >= $3.value);
+            $$.type = TYPE_INT;
+        }
     | expression LE expression
-        { $$ = ($1 <= $3); }
+        {
+            $$.value = ($1.value <= $3.value);
+            $$.type = TYPE_INT;
+        }
     | LPAREN expression RPAREN
-        { $$ = $2; }
+        {
+            $$ = $2;
+        }
     | NUMBER
-        { $$ = $1; }
+        {
+            $$.value = $1;
+            $$.type = TYPE_INT;
+        }
     | FLOAT_NUM
-        { $$ = $1; }
+        {
+            $$.value = $1;
+            $$.type = TYPE_FLOAT;
+        }
     | ID
         {
             Symbol sym;
 
             if (get_symbol($1, &sym)) {
                 if (sym.initialized) {
-                    $$ = sym.value;
+                    $$.value = sym.value;
+                    $$.type = sym.type;
                 } else {
                     printf("Semantic Error: Variable '%s' is not initialized.\n", $1);
                     semantic_error = 1;
-                    $$ = 0;
+                    $$.value = 0;
+                    $$.type = sym.type;
                 }
             } else {
                 printf("Semantic Error: Variable '%s' is not declared.\n", $1);
                 semantic_error = 1;
-                $$ = 0;
+                $$.value = 0;
+                $$.type = TYPE_INT;
             }
 
             free($1);

@@ -12,6 +12,11 @@ typedef enum {
 } DataType;
 
 typedef struct {
+    double value;
+    DataType type;
+} ExprValue;
+
+typedef struct {
     char name[100];
     DataType type;
     double value;
@@ -29,6 +34,8 @@ int add_symbol(const char *name, DataType type, double value, int initialized);
 int update_symbol(const char *name, double value);
 
 int get_symbol(const char *name, Symbol *result);
+
+int check_type_compatibility(DataType target, DataType source);
 
 void print_symbol_table(void);
 

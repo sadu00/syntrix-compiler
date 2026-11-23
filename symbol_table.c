@@ -14,20 +14,11 @@ void init_symbol_table(void) {
 
 const char *get_type_name(DataType type) {
     switch (type) {
-        case TYPE_INT:
-            return "int";
-
-        case TYPE_FLOAT:
-            return "float";
-
-        case TYPE_CHAR:
-            return "char";
-
-        case TYPE_STRING:
-            return "string";
-
-        default:
-            return "unknown";
+        case TYPE_INT: return "int";
+        case TYPE_FLOAT: return "float";
+        case TYPE_CHAR: return "char";
+        case TYPE_STRING: return "string";
+        default: return "unknown";
     }
 }
 
@@ -39,6 +30,17 @@ int get_symbol(const char *name, Symbol *result) {
             }
             return 1;
         }
+    }
+    return 0;
+}
+
+int check_type_compatibility(DataType target, DataType source) {
+    if (target == source) {
+        return 1;
+    }
+
+    if (target == TYPE_FLOAT && source == TYPE_INT) {
+        return 1;
     }
 
     return 0;
@@ -65,7 +67,6 @@ int add_symbol(const char *name, DataType type,
     symbol_table[symbol_count].initialized = initialized;
 
     symbol_count++;
-
     return 1;
 }
 
@@ -85,9 +86,7 @@ int update_symbol(const char *name, double value) {
 
 void print_symbol_table(void) {
     printf("\n========== SYMBOL TABLE ==========\n");
-
     printf("%-15s %-12s %-12s\n", "Name", "Data Type", "Value");
-
     printf("----------------------------------\n");
 
     for (int i = 0; i < symbol_count; i++) {
