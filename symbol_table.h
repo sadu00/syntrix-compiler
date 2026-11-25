@@ -3,6 +3,7 @@
 #define SYMBOL_TABLE_H
 
 #define MAX_SYMBOLS 100
+#define MAX_SCOPES 50
 
 typedef enum {
     TYPE_INT,
@@ -21,6 +22,7 @@ typedef struct {
     DataType type;
     double value;
     int initialized;
+    int scope_level;
 } Symbol;
 
 extern Symbol symbol_table[MAX_SYMBOLS];
@@ -28,6 +30,9 @@ extern int symbol_count;
 extern int semantic_error;
 
 void init_symbol_table(void);
+
+void enter_scope(void);
+void exit_scope(void);
 
 int add_symbol(const char *name, DataType type, double value, int initialized);
 

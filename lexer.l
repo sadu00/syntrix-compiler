@@ -1,6 +1,7 @@
 
 %{
 #include "parser.tab.h"
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 %}
@@ -57,6 +58,10 @@ FLOATNUM    {DIGIT}+"."{DIGIT}+
 
 "//".*          ;
 
-.               { return INVALID; }
+. {
+    printf("Lexical Error at line %d: Invalid character '%s'\n",
+           yylineno, yytext);
+    return INVALID;
+}
 
 %%

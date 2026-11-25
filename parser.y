@@ -10,6 +10,8 @@
 
 int yylex(void);
 void yyerror(const char *s);
+
+extern int yylineno;
 %}
 
 %union {
@@ -75,7 +77,8 @@ declaration:
             if (check_type_compatibility($1, $4.type)) {
                 add_symbol($2, $1, $4.value, 1);
             } else {
-                printf("Semantic Error: Cannot assign %s value to %s variable '%s'.\n",
+                printf("Semantic Error at line %d: Cannot assign %s value to %s variable '%s'.\n",
+                       yylineno,
                        get_type_name($4.type),
                        get_type_name($1), $2);
                 semantic_error = 1;
@@ -102,11 +105,13 @@ assignment:
                 if (check_type_compatibility(sym.type, $3.type)) {
                     update_symbol($1, $3.value);
                 } else {
-                    printf("Semantic Error: Type mismatch for variable '%s'.\n", $1);
+                    printf("Semantic Error at line %d: Type mismatch for variable '%s'.\n",
+                           yylineno, $1);
                     semantic_error = 1;
                 }
             } else {
-                printf("Semantic Error: Variable '%s' is not declared.\n", $1);
+                printf("Semantic Error at line %d: Variable '%s' is not declared.\n",
+                       yylineno, $1);
                 semantic_error = 1;
             }
         }
@@ -134,7 +139,10 @@ return_statement:
     ;
 
 block:
-    LBRACE statements RBRACE
+    LBRACE { enter_scope(); } statements RBRACE
+    {
+        exit_scope();
+    }
     ;
 
 expression:
@@ -159,7 +167,8 @@ expression:
     | expression DIVIDE expression
         {
             if ($3.value == 0) {
-                printf("Semantic Error: Division by zero.\n");
+                printf("Semantic Error at line %d: Division by zero.\n",
+                       yylineno);
                 semantic_error = 1;
                 $$.value = 0;
             } else {
@@ -222,13 +231,15 @@ expression:
                     $$.value = sym.value;
                     $$.type = sym.type;
                 } else {
-                    printf("Semantic Error: Variable '%s' is not initialized.\n", $1);
+                    printf("Semantic Error at line %d: Variable '%s' is not initialized.\n",
+                           yylineno, $1);
                     semantic_error = 1;
                     $$.value = 0;
                     $$.type = sym.type;
                 }
             } else {
-                printf("Semantic Error: Variable '%s' is not declared.\n", $1);
+                printf("Semantic Error at line %d: Variable '%s' is not declared.\n",
+                       yylineno, $1);
                 semantic_error = 1;
                 $$.value = 0;
                 $$.type = TYPE_INT;
@@ -241,5 +252,5 @@ expression:
 %%
 
 void yyerror(const char *s) {
-    printf("Syntax Error: %s\n", s);
+    printf("Syntax Error at line %d: %s\n", yylineno, s);
 }
