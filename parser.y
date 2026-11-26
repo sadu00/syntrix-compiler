@@ -1,60 +1,28 @@
 
 %code requires {
-    #include "symbol_table.h"
+    #include "ast.h"
 }
 
 %{
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include "symbol_table.h"
+#include "ast.h"
 
 int yylex(void);
 void yyerror(const char *s);
 
 extern int yylineno;
 
-static int execution_enabled = 1;
-static int execution_stack[100];
-static int condition_stack[100];
-static int if_depth = 0;
-
-void start_if(int condition) {
-    if (if_depth >= 100) {
-        printf("Semantic Error at line %d: Maximum nested if limit reached.\n",
-               yylineno);
-        semantic_error = 1;
-        return;
-    }
-
-    execution_stack[if_depth] = execution_enabled;
-    condition_stack[if_depth] = condition;
-
-    execution_enabled = execution_enabled && condition;
-    if_depth++;
-}
-
-void switch_else(void) {
-    if (if_depth > 0) {
-        execution_enabled =
-            execution_stack[if_depth - 1] &&
-            !condition_stack[if_depth - 1];
-    }
-}
-
-void end_if(void) {
-    if (if_depth > 0) {
-        if_depth--;
-        execution_enabled = execution_stack[if_depth];
-    }
-}
+Stmt *syntax_tree = NULL;
 %}
 
 %union {
     double num;
     char *str;
     DataType type;
-    ExprValue expr;
+    Expr *expr;
+    Stmt *stmt;
 }
 
 %token INT FLOAT CHAR STRING
@@ -71,7 +39,9 @@ void end_if(void) {
 
 %type <expr> expression
 %type <type> data_type
-%type <num> if_prefix
+%type <stmt> program statements statement
+%type <stmt> declaration assignment print_statement
+%type <stmt> if_statement while_statement block
 
 %left EQ NE GT LT GE LE
 %left PLUS MINUS
@@ -86,46 +56,46 @@ void end_if(void) {
 
 program:
     statements
+    {
+        syntax_tree = $1;
+    }
     ;
 
 statements:
       statements statement
+      {
+          $$ = $1;
+          append_statement(&$$, $2);
+      }
     | statement
+      {
+          $$ = $1;
+      }
     ;
 
 statement:
-      declaration
-    | assignment
-    | print_statement
-    | if_statement
-    | while_statement
-    | return_statement
-    | block
+      declaration    { $$ = $1; }
+    | assignment     { $$ = $1; }
+    | print_statement { $$ = $1; }
+    | if_statement   { $$ = $1; }
+    | while_statement { $$ = $1; }
+    | block          { $$ = $1; }
     ;
 
 declaration:
-    data_type ID SEMICOLON
-    {
-        if (execution_enabled && !semantic_error) {
-            add_symbol($2, $1, 0, 0);
-        }
-        free($2);
-    }
+      data_type ID SEMICOLON
+      {
+          $$ = create_statement(STMT_DECLARATION);
+          $$->name = $2;
+          $$->data_type = $1;
+      }
     | data_type ID ASSIGN expression SEMICOLON
-    {
-        if (execution_enabled && !semantic_error) {
-            if (check_type_compatibility($1, $4.type)) {
-                add_symbol($2, $1, $4.value, 1);
-            } else {
-                printf("Semantic Error at line %d: Cannot assign %s value to %s variable '%s'.\n",
-                       yylineno,
-                       get_type_name($4.type),
-                       get_type_name($1), $2);
-                semantic_error = 1;
-            }
-        }
-        free($2);
-    }
+      {
+          $$ = create_statement(STMT_DECLARATION);
+          $$->name = $2;
+          $$->data_type = $1;
+          $$->expression = $4;
+      }
     ;
 
 data_type:
@@ -138,191 +108,124 @@ data_type:
 assignment:
     ID ASSIGN expression SEMICOLON
     {
-        Symbol sym;
-
-        if (execution_enabled && !semantic_error) {
-            if (get_symbol($1, &sym)) {
-                if (check_type_compatibility(sym.type, $3.type)) {
-                    update_symbol($1, $3.value);
-                } else {
-                    printf("Semantic Error at line %d: Type mismatch for variable '%s'.\n",
-                           yylineno, $1);
-                    semantic_error = 1;
-                }
-            } else {
-                printf("Semantic Error at line %d: Variable '%s' is not declared.\n",
-                       yylineno, $1);
-                semantic_error = 1;
-            }
-        }
-
-        free($1);
+        $$ = create_statement(STMT_ASSIGNMENT);
+        $$->name = $1;
+        $$->expression = $3;
     }
     ;
 
 print_statement:
       PRINT LPAREN expression RPAREN SEMICOLON
       {
-          if (execution_enabled && !semantic_error) {
-              printf("%g\n", $3.value);
-          }
+          $$ = create_statement(STMT_PRINT_EXPR);
+          $$->expression = $3;
       }
     | PRINT LPAREN STRING_LITERAL RPAREN SEMICOLON
       {
-          if (execution_enabled && !semantic_error) {
-              printf("%.*s\n",
-                     (int)strlen($3) - 2,
-                     $3 + 1);
+          $$ = create_statement(STMT_PRINT_STRING);
+
+          int length = strlen($3);
+          $$->string_value = malloc(length - 1);
+
+          if ($$->string_value != NULL) {
+              memcpy($$->string_value, $3 + 1, length - 2);
+              $$->string_value[length - 2] = '\0';
           }
+
           free($3);
       }
     ;
 
-if_prefix:
-    IF LPAREN expression RPAREN
-    {
-        start_if($3.value != 0);
-        $$ = 0;
-    }
-    ;
-
 if_statement:
-      if_prefix block %prec LOWER_THAN_ELSE
+      IF LPAREN expression RPAREN block %prec LOWER_THAN_ELSE
       {
-          end_if();
+          $$ = create_statement(STMT_IF);
+          $$->condition = $3;
+          $$->body = $5;
       }
-    | if_prefix block ELSE
+    | IF LPAREN expression RPAREN block ELSE block
       {
-          switch_else();
-      }
-      block
-      {
-          end_if();
+          $$ = create_statement(STMT_IF);
+          $$->condition = $3;
+          $$->body = $5;
+          $$->else_body = $7;
       }
     ;
 
 while_statement:
     WHILE LPAREN expression RPAREN block
-    ;
-
-return_statement:
-    RETURN expression SEMICOLON
+    {
+        $$ = create_statement(STMT_WHILE);
+        $$->condition = $3;
+        $$->body = $5;
+    }
     ;
 
 block:
-    LBRACE { enter_scope(); } statements RBRACE
+    LBRACE statements RBRACE
     {
-        exit_scope();
+        $$ = create_statement(STMT_BLOCK);
+        $$->body = $2;
     }
     ;
 
 expression:
       expression PLUS expression
-        {
-            $$.value = $1.value + $3.value;
-            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
-                      ? TYPE_FLOAT : TYPE_INT;
-        }
+      {
+          $$ = create_binary('+', $1, $3);
+      }
     | expression MINUS expression
-        {
-            $$.value = $1.value - $3.value;
-            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
-                      ? TYPE_FLOAT : TYPE_INT;
-        }
+      {
+          $$ = create_binary('-', $1, $3);
+      }
     | expression MULTIPLY expression
-        {
-            $$.value = $1.value * $3.value;
-            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
-                      ? TYPE_FLOAT : TYPE_INT;
-        }
+      {
+          $$ = create_binary('*', $1, $3);
+      }
     | expression DIVIDE expression
-        {
-            if (execution_enabled && $3.value == 0) {
-                printf("Semantic Error at line %d: Division by zero.\n",
-                       yylineno);
-                semantic_error = 1;
-                $$.value = 0;
-            } else if ($3.value == 0) {
-                $$.value = 0;
-            } else {
-                $$.value = $1.value / $3.value;
-            }
-
-            $$.type = ($1.type == TYPE_FLOAT || $3.type == TYPE_FLOAT)
-                      ? TYPE_FLOAT : TYPE_INT;
-        }
-    | expression EQ expression
-        {
-            $$.value = ($1.value == $3.value);
-            $$.type = TYPE_INT;
-        }
-    | expression NE expression
-        {
-            $$.value = ($1.value != $3.value);
-            $$.type = TYPE_INT;
-        }
+      {
+          $$ = create_binary('/', $1, $3);
+      }
     | expression GT expression
-        {
-            $$.value = ($1.value > $3.value);
-            $$.type = TYPE_INT;
-        }
+      {
+          $$ = create_binary('>', $1, $3);
+      }
     | expression LT expression
-        {
-            $$.value = ($1.value < $3.value);
-            $$.type = TYPE_INT;
-        }
+      {
+          $$ = create_binary('<', $1, $3);
+      }
     | expression GE expression
-        {
-            $$.value = ($1.value >= $3.value);
-            $$.type = TYPE_INT;
-        }
+      {
+          $$ = create_binary('G', $1, $3);
+      }
     | expression LE expression
-        {
-            $$.value = ($1.value <= $3.value);
-            $$.type = TYPE_INT;
-        }
+      {
+          $$ = create_binary('L', $1, $3);
+      }
+    | expression EQ expression
+      {
+          $$ = create_binary('E', $1, $3);
+      }
+    | expression NE expression
+      {
+          $$ = create_binary('N', $1, $3);
+      }
     | LPAREN expression RPAREN
-        {
-            $$ = $2;
-        }
+      {
+          $$ = $2;
+      }
     | NUMBER
-        {
-            $$.value = $1;
-            $$.type = TYPE_INT;
-        }
+      {
+          $$ = create_number($1, EXPR_NUMBER);
+      }
     | FLOAT_NUM
-        {
-            $$.value = $1;
-            $$.type = TYPE_FLOAT;
-        }
+      {
+          $$ = create_number($1, EXPR_FLOAT);
+      }
     | ID
-        {
-            Symbol sym;
-
-            if (!execution_enabled) {
-                $$.value = 0;
-                $$.type = TYPE_INT;
-            } else if (get_symbol($1, &sym)) {
-                if (sym.initialized) {
-                    $$.value = sym.value;
-                    $$.type = sym.type;
-                } else {
-                    printf("Semantic Error at line %d: Variable '%s' is not initialized.\n",
-                           yylineno, $1);
-                    semantic_error = 1;
-                    $$.value = 0;
-                    $$.type = sym.type;
-                }
-            } else {
-                printf("Semantic Error at line %d: Variable '%s' is not declared.\n",
-                       yylineno, $1);
-                semantic_error = 1;
-                $$.value = 0;
-                $$.type = TYPE_INT;
-            }
-
-            free($1);
-        }
+      {
+          $$ = create_variable($1);
+      }
     ;
 
 %%

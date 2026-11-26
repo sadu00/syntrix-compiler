@@ -1,10 +1,13 @@
 
 #include <stdio.h>
 #include "symbol_table.h"
+#include "ast.h"
 
 int yyparse(void);
 
-int main() {
+extern Stmt *syntax_tree;
+
+int main(void) {
     init_symbol_table();
 
     printf("================================\n");
@@ -14,6 +17,10 @@ int main() {
     printf("Enter your Syntrix code:\n\n");
 
     int result = yyparse();
+
+    if (result == 0) {
+        execute_program(syntax_tree);
+    }
 
     if (result == 0 && semantic_error == 0) {
         printf("\nSyntax and semantic analysis successful!\n");
