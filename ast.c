@@ -31,7 +31,12 @@ static ExprValue evaluate_expression(Expr *expr) {
 
         case EXPR_BINARY: {
             ExprValue left = evaluate_expression(expr->left);
+
+            if (semantic_error) break;
+
             ExprValue right = evaluate_expression(expr->right);
+
+            if (semantic_error) break;
 
             result.type = TYPE_INT;
 
@@ -115,6 +120,8 @@ void execute_program(Stmt *program) {
                     ExprValue result =
                         evaluate_expression(current->expression);
 
+                    if (semantic_error) break;
+
                     if (!check_type_compatibility(current->data_type,
                                                   result.type)) {
                         printf("Semantic Error: Type mismatch in declaration of '%s'.\n",
@@ -126,29 +133,30 @@ void execute_program(Stmt *program) {
                     value = result.value;
                 }
 
-                if (!semantic_error) {
-                    add_symbol(current->name,
-                               current->data_type,
-                               value,
-                               initialized);
-                }
+                add_symbol(current->name,
+                           current->data_type,
+                           value,
+                           initialized);
                 break;
             }
 
             case STMT_ASSIGNMENT: {
+                if (!get_symbol(current->name, &sym)) {
+                    printf("Semantic Error: Variable '%s' is not declared.\n",
+                           current->name);
+                    semantic_error = 1;
+                    break;
+                }
+
                 ExprValue result =
                     evaluate_expression(current->expression);
 
-                if (get_symbol(current->name, &sym)) {
-                    if (check_type_compatibility(sym.type, result.type)) {
-                        update_symbol(current->name, result.value);
-                    } else {
-                        printf("Semantic Error: Type mismatch for variable '%s'.\n",
-                               current->name);
-                        semantic_error = 1;
-                    }
+                if (semantic_error) break;
+
+                if (check_type_compatibility(sym.type, result.type)) {
+                    update_symbol(current->name, result.value);
                 } else {
-                    printf("Semantic Error: Variable '%s' is not declared.\n",
+                    printf("Semantic Error: Type mismatch for variable '%s'.\n",
                            current->name);
                     semantic_error = 1;
                 }
@@ -171,8 +179,11 @@ void execute_program(Stmt *program) {
 
             case STMT_IF:
                 if (evaluate_expression(current->condition).value != 0) {
-                    execute_program(current->body);
-                } else if (current->else_body != NULL) {
+                    if (!semantic_error) {
+                        execute_program(current->body);
+                    }
+                } else if (!semantic_error &&
+                           current->else_body != NULL) {
                     execute_program(current->else_body);
                 }
                 break;
@@ -180,8 +191,10 @@ void execute_program(Stmt *program) {
             case STMT_WHILE: {
                 int iterations = 0;
 
-                while (evaluate_expression(current->condition).value != 0
-                       && !semantic_error) {
+                while (!semantic_error &&
+                       evaluate_expression(current->condition).value != 0) {
+
+                    if (semantic_error) break;
 
                     if (++iterations > 10000) {
                         printf("Runtime Error: Maximum loop limit reached.\n");
@@ -191,6 +204,37 @@ void execute_program(Stmt *program) {
 
                     execute_program(current->body);
                 }
+                break;
+            }
+
+            case STMT_FOR: {
+                int iterations = 0;
+
+                enter_scope();
+
+                if (current->init != NULL) {
+                    execute_program(current->init);
+                }
+
+                while (!semantic_error &&
+                       evaluate_expression(current->condition).value != 0) {
+
+                    if (semantic_error) break;
+
+                    if (++iterations > 10000) {
+                        printf("Runtime Error: Maximum loop limit reached.\n");
+                        semantic_error = 1;
+                        break;
+                    }
+
+                    execute_program(current->body);
+
+                    if (!semantic_error && current->update != NULL) {
+                        execute_program(current->update);
+                    }
+                }
+
+                exit_scope();
                 break;
             }
 

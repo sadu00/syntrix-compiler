@@ -28,16 +28,23 @@ typedef enum {
     STMT_PRINT_STRING,
     STMT_IF,
     STMT_WHILE,
+    STMT_FOR,
     STMT_BLOCK
 } StmtKind;
 
 typedef struct Stmt {
     StmtKind kind;
+
     char *name;
     char *string_value;
     DataType data_type;
+
     Expr *expression;
     Expr *condition;
+
+    struct Stmt *init;
+    struct Stmt *update;
+
     struct Stmt *body;
     struct Stmt *else_body;
     struct Stmt *next;

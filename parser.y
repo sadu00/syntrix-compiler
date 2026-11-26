@@ -41,7 +41,8 @@ Stmt *syntax_tree = NULL;
 %type <type> data_type
 %type <stmt> program statements statement
 %type <stmt> declaration assignment print_statement
-%type <stmt> if_statement while_statement block
+%type <stmt> if_statement while_statement for_statement block
+%type <stmt> for_init for_update
 
 %left EQ NE GT LT GE LE
 %left PLUS MINUS
@@ -74,12 +75,13 @@ statements:
     ;
 
 statement:
-      declaration    { $$ = $1; }
-    | assignment     { $$ = $1; }
-    | print_statement { $$ = $1; }
-    | if_statement   { $$ = $1; }
-    | while_statement { $$ = $1; }
-    | block          { $$ = $1; }
+      declaration       { $$ = $1; }
+    | assignment        { $$ = $1; }
+    | print_statement  { $$ = $1; }
+    | if_statement     { $$ = $1; }
+    | while_statement  { $$ = $1; }
+    | for_statement    { $$ = $1; }
+    | block            { $$ = $1; }
     ;
 
 declaration:
@@ -158,6 +160,56 @@ while_statement:
         $$ = create_statement(STMT_WHILE);
         $$->condition = $3;
         $$->body = $5;
+    }
+    ;
+
+/* For loop initialization */
+
+for_init:
+      data_type ID ASSIGN expression
+      {
+          $$ = create_statement(STMT_DECLARATION);
+          $$->name = $2;
+          $$->data_type = $1;
+          $$->expression = $4;
+      }
+    | ID ASSIGN expression
+      {
+          $$ = create_statement(STMT_ASSIGNMENT);
+          $$->name = $1;
+          $$->expression = $3;
+      }
+    | %empty
+      {
+          $$ = NULL;
+      }
+    ;
+
+/* For loop update */
+
+for_update:
+      ID ASSIGN expression
+      {
+          $$ = create_statement(STMT_ASSIGNMENT);
+          $$->name = $1;
+          $$->expression = $3;
+      }
+    | %empty
+      {
+          $$ = NULL;
+      }
+    ;
+
+/* For loop */
+
+for_statement:
+    FOR LPAREN for_init SEMICOLON expression SEMICOLON for_update RPAREN block
+    {
+        $$ = create_statement(STMT_FOR);
+        $$->init = $3;
+        $$->condition = $5;
+        $$->update = $7;
+        $$->body = $9;
     }
     ;
 
