@@ -6,12 +6,48 @@
 %{
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "symbol_table.h"
 
 int yylex(void);
 void yyerror(const char *s);
 
 extern int yylineno;
+
+static int execution_enabled = 1;
+static int execution_stack[100];
+static int condition_stack[100];
+static int if_depth = 0;
+
+void start_if(int condition) {
+    if (if_depth >= 100) {
+        printf("Semantic Error at line %d: Maximum nested if limit reached.\n",
+               yylineno);
+        semantic_error = 1;
+        return;
+    }
+
+    execution_stack[if_depth] = execution_enabled;
+    condition_stack[if_depth] = condition;
+
+    execution_enabled = execution_enabled && condition;
+    if_depth++;
+}
+
+void switch_else(void) {
+    if (if_depth > 0) {
+        execution_enabled =
+            execution_stack[if_depth - 1] &&
+            !condition_stack[if_depth - 1];
+    }
+}
+
+void end_if(void) {
+    if (if_depth > 0) {
+        if_depth--;
+        execution_enabled = execution_stack[if_depth];
+    }
+}
 %}
 
 %union {
@@ -35,10 +71,14 @@ extern int yylineno;
 
 %type <expr> expression
 %type <type> data_type
+%type <num> if_prefix
 
 %left EQ NE GT LT GE LE
 %left PLUS MINUS
 %left MULTIPLY DIVIDE
+
+%nonassoc LOWER_THAN_ELSE
+%nonassoc ELSE
 
 %start program
 
@@ -66,14 +106,14 @@ statement:
 declaration:
     data_type ID SEMICOLON
     {
-        if (!semantic_error) {
+        if (execution_enabled && !semantic_error) {
             add_symbol($2, $1, 0, 0);
         }
         free($2);
     }
     | data_type ID ASSIGN expression SEMICOLON
     {
-        if (!semantic_error) {
+        if (execution_enabled && !semantic_error) {
             if (check_type_compatibility($1, $4.type)) {
                 add_symbol($2, $1, $4.value, 1);
             } else {
@@ -100,7 +140,7 @@ assignment:
     {
         Symbol sym;
 
-        if (!semantic_error) {
+        if (execution_enabled && !semantic_error) {
             if (get_symbol($1, &sym)) {
                 if (check_type_compatibility(sym.type, $3.type)) {
                     update_symbol($1, $3.value);
@@ -122,12 +162,43 @@ assignment:
 
 print_statement:
       PRINT LPAREN expression RPAREN SEMICOLON
+      {
+          if (execution_enabled && !semantic_error) {
+              printf("%g\n", $3.value);
+          }
+      }
     | PRINT LPAREN STRING_LITERAL RPAREN SEMICOLON
+      {
+          if (execution_enabled && !semantic_error) {
+              printf("%.*s\n",
+                     (int)strlen($3) - 2,
+                     $3 + 1);
+          }
+          free($3);
+      }
+    ;
+
+if_prefix:
+    IF LPAREN expression RPAREN
+    {
+        start_if($3.value != 0);
+        $$ = 0;
+    }
     ;
 
 if_statement:
-      IF LPAREN expression RPAREN block
-    | IF LPAREN expression RPAREN block ELSE block
+      if_prefix block %prec LOWER_THAN_ELSE
+      {
+          end_if();
+      }
+    | if_prefix block ELSE
+      {
+          switch_else();
+      }
+      block
+      {
+          end_if();
+      }
     ;
 
 while_statement:
@@ -166,10 +237,12 @@ expression:
         }
     | expression DIVIDE expression
         {
-            if ($3.value == 0) {
+            if (execution_enabled && $3.value == 0) {
                 printf("Semantic Error at line %d: Division by zero.\n",
                        yylineno);
                 semantic_error = 1;
+                $$.value = 0;
+            } else if ($3.value == 0) {
                 $$.value = 0;
             } else {
                 $$.value = $1.value / $3.value;
@@ -226,7 +299,10 @@ expression:
         {
             Symbol sym;
 
-            if (get_symbol($1, &sym)) {
+            if (!execution_enabled) {
+                $$.value = 0;
+                $$.type = TYPE_INT;
+            } else if (get_symbol($1, &sym)) {
                 if (sym.initialized) {
                     $$.value = sym.value;
                     $$.type = sym.type;
