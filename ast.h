@@ -7,8 +7,10 @@
 typedef enum {
     EXPR_NUMBER,
     EXPR_FLOAT,
+    EXPR_BOOLEAN,
     EXPR_VARIABLE,
-    EXPR_BINARY
+    EXPR_BINARY,
+    EXPR_UNARY
 } ExprKind;
 
 typedef struct Expr {
@@ -51,8 +53,10 @@ typedef struct Stmt {
 } Stmt;
 
 Expr *create_number(double value, ExprKind kind);
+Expr *create_boolean(int value);
 Expr *create_variable(char *name);
 Expr *create_binary(int operation, Expr *left, Expr *right);
+Expr *create_unary(int operation, Expr *operand);
 
 Stmt *create_statement(StmtKind kind);
 void append_statement(Stmt **list, Stmt *statement);

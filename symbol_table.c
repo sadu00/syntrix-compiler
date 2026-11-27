@@ -50,6 +50,7 @@ const char *get_type_name(DataType type) {
     switch (type) {
         case TYPE_INT: return "int";
         case TYPE_FLOAT: return "float";
+        case TYPE_BOOL: return "bool";
         case TYPE_CHAR: return "char";
         case TYPE_STRING: return "string";
         default: return "unknown";

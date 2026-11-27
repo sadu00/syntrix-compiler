@@ -18,8 +18,13 @@ FLOATNUM    {DIGIT}+"."{DIGIT}+
 
 "int"           { return INT; }
 "float"         { return FLOAT; }
+"bool"          { return BOOL; }
+
 "char"          { return CHAR; }
 "string"        { return STRING; }
+
+"true"          { return TRUE; }
+"false"         { return FALSE; }
 
 "if"            { return IF; }
 "else"          { return ELSE; }
@@ -35,11 +40,16 @@ FLOATNUM    {DIGIT}+"."{DIGIT}+
 ">"             { return GT; }
 "<"             { return LT; }
 
+"&&"            { return AND; }
+"||"            { return OR; }
+"!"             { return NOT; }
+
 "="             { return ASSIGN; }
 "+"             { return PLUS; }
 "-"             { return MINUS; }
 "*"             { return MULTIPLY; }
 "/"             { return DIVIDE; }
+"%"             { return MODULO; }
 
 ";"             { return SEMICOLON; }
 ","             { return COMMA; }
@@ -50,13 +60,17 @@ FLOATNUM    {DIGIT}+"."{DIGIT}+
 
 {FLOATNUM}      { yylval.num = atof(yytext); return FLOAT_NUM; }
 {NUMBER}        { yylval.num = atoi(yytext); return NUMBER; }
+
 {ID}            { yylval.str = strdup(yytext); return ID; }
 
-\"([^\"\\\n]|\\.)*\"  { yylval.str = strdup(yytext); return STRING_LITERAL; }
-
-[ \t\r\n]+      ;
+\"([^\"\\\n]|\\.)*\" {
+    yylval.str = strdup(yytext);
+    return STRING_LITERAL;
+}
 
 "//".*          ;
+
+[ \t\r\n]+      ;
 
 . {
     printf("Lexical Error at line %d: Invalid character '%s'\n",
