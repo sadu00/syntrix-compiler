@@ -45,6 +45,7 @@ Stmt *syntax_tree = NULL;
 %type <stmt> program statements statement block
 %type <stmt> declaration assignment print_statement
 %type <stmt> if_statement while_statement for_statement
+%type <stmt> for_init for_update
 
 %left OR
 %left AND
@@ -200,14 +201,32 @@ while_statement:
     }
     ;
 
+for_init:
+    ID ASSIGN expression
+    {
+        $$ = create_statement(STMT_ASSIGNMENT);
+        $$->name = $1;
+        $$->expression = $3;
+    }
+    ;
+
+for_update:
+    ID ASSIGN expression
+    {
+        $$ = create_statement(STMT_ASSIGNMENT);
+        $$->name = $1;
+        $$->expression = $3;
+    }
+    ;
+
 for_statement:
-    FOR LPAREN assignment expression SEMICOLON assignment RPAREN statement
+    FOR LPAREN for_init SEMICOLON expression SEMICOLON for_update RPAREN statement
     {
         $$ = create_statement(STMT_FOR);
         $$->init = $3;
-        $$->condition = $4;
-        $$->update = $6;
-        $$->body = $8;
+        $$->condition = $5;
+        $$->update = $7;
+        $$->body = $9;
     }
     ;
 

@@ -85,11 +85,13 @@ static ExprValue evaluate_expression(Expr *expr) {
                     if (right.value == 0) {
                         printf("Semantic Error: Division by zero.\n");
                         semantic_error = 1;
+                    } else if (left.type == TYPE_INT &&
+                               right.type == TYPE_INT) {
+                        result.value = (int)left.value / (int)right.value;
+                        result.type = TYPE_INT;
                     } else {
                         result.value = left.value / right.value;
-                        result.type = (left.type == TYPE_FLOAT ||
-                                       right.type == TYPE_FLOAT)
-                                      ? TYPE_FLOAT : TYPE_INT;
+                        result.type = TYPE_FLOAT;
                     }
                     break;
 
