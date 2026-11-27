@@ -1,13 +1,16 @@
 
 #include <stdio.h>
+
 #include "symbol_table.h"
 #include "ast.h"
+#include "tac.h"
 
 int yyparse(void);
 
 extern Stmt *syntax_tree;
 
-int main(void) {
+int main(void)
+{
     init_symbol_table();
 
     printf("================================\n");
@@ -23,8 +26,13 @@ int main(void) {
     }
 
     if (result == 0 && semantic_error == 0) {
+
         printf("\nSyntax and semantic analysis successful!\n");
+
+        generate_tac(syntax_tree);
+
     } else {
+
         printf("\nCompilation failed!\n");
     }
 
